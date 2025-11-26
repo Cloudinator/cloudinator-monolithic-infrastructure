@@ -45,8 +45,8 @@ def detectProjectType(String projectPath) {
         def packageJson = readJSON file: "${projectPath}/package.json"
         echo "package.json contents: ${packageJson}"
 
-        if (packageJson.dependencies?.next || packageJson.devDependencies?.next) {
-            echo "Next.js dependencies found - starting standalone mode configuration"
+        if (fileExists("${projectPath}/next.config.js") || fileExists("${projectPath}/next.config.mjs") || fileExists("${projectPath}/next.config.ts") || packageJson.dependencies?.next || packageJson.devDependencies?.next) {
+            echo "Next.js dependencies or config found - starting standalone mode configuration"
             try {
                 writeNextEnsureStandaloneMode(projectPath)
                 echo "Standalone mode configuration completed successfully"
@@ -57,7 +57,7 @@ def detectProjectType(String projectPath) {
             echo "Next.js project detected, setting port to 3000"
             return [type: 'nextjs', port: 3000]
         } else if (packageJson.dependencies?.react || packageJson.devDependencies?.react) {
-            if (packageJson.dependencies?.vite || packageJson.devDependencies?.vite) {
+            if (fileExists("${projectPath}/vite.config.js") || fileExists("${projectPath}/vite.config.mjs") || fileExists("${projectPath}/vite.config.ts") || packageJson.dependencies?.vite || packageJson.devDependencies?.vite) {
                 echo "React Vite project detected, setting port to 80"
                 return [type: 'vite-react', port: 80]
             } else {
