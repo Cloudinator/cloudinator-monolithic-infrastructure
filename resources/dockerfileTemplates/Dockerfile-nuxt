@@ -1,24 +1,51 @@
 # Build stage
-FROM node:18-alpine AS build
+FROM node:18.19.0-alpine3.19 AS build
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN {{packageManager}} install
 
 COPY . .
-RUN npm run build
+RUN {{packageManager}} run build
 
 # Production stage
-FROM node:18-alpine
+FROM node:18.19.0-alpine3.19
 
 WORKDIR /app
-COPY --from=build /app/.output ./.output
 
+# Create non-root user
+RUN addgroup -g 1001 -S nuxtjs && \
+    adduser -S nuxtjs -u 1001
+
+# Copy build output with proper ownership
+COPY --from=build --chown=nuxtjs:nuxtjs /app/.output ./.output
+
+# Create inline healthcheck script
+RUN echo 'const http = require("http"); \
+const options = { host: "localhost", port: process.env.NUXT_PORT || 3000, path: "/", timeout: 2000 }; \
+http.request(options, (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }) \
+.on("error", () => { process.exit(1); }).end();' > /app/healthcheck.js && \
+    chown nuxtjs:nuxtjs /app/healthcheck.js
+
+# Switch to non-root user
+USER nuxtjs
+
+# Set environment variables
 ENV NODE_ENV=production
 ENV NUXT_HOST=0.0.0.0
 ENV NUXT_PORT=3000
 
+# Expose port
 EXPOSE 3000
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+    CMD node /app/healthcheck.js || exit 1
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="Nuxt.js application" \
+      version="1.0"
 
 CMD ["node", ".output/server/index.mjs"]

@@ -1,25 +1,25 @@
 # Stage 1: Build the application
-FROM php:8.2-cli as builder
+FROM php:8.2.14-cli-alpine3.19 AS builder
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
     git \
     unzip \
-    libzip-dev \
-    && rm -rf /var/lib/apt/lists/*
+    libzip-dev
 
 # Install PHP extensions
 RUN docker-php-ext-install \
     pdo_mysql \
     exif \
     pcntl \
-    bcmath
+    bcmath \
+    zip
 
-# Install composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# Install composer with pinned version
+COPY --from=composer:2.6.6 /usr/bin/composer /usr/bin/composer
 
 # Copy composer files
 COPY composer.json composer.lock ./
@@ -31,31 +31,32 @@ RUN composer install --no-dev --no-scripts --no-autoloader --no-interaction
 COPY . .
 
 # Set proper permissions
-RUN chown -R www-data:www-data /app \
-    && chmod -R 755 /app/storage
+RUN chown -R www-data:www-data /app && \
+    chmod -R 755 /app/storage
 
 # Generate optimized autoloader and run post-install scripts
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 # Laravel optimization
-RUN php artisan key:generate --force
-RUN php artisan config:cache
-RUN php artisan route:cache
-RUN php artisan view:cache
-RUN php artisan optimize
+RUN php artisan key:generate --force && \
+    php artisan config:cache && \
+    php artisan route:cache && \
+    php artisan view:cache && \
+    php artisan optimize
 
 # Stage 2: Create production image
-FROM php:8.2-cli
+FROM php:8.2.14-cli-alpine3.19
 
 # Install system dependencies and extensions
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
     libzip-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && docker-php-ext-install \
+    netcat-openbsd && \
+    docker-php-ext-install \
         pdo_mysql \
         exif \
         pcntl \
-        bcmath
+        bcmath \
+        zip
 
 # Set working directory
 WORKDIR /app
@@ -66,20 +67,37 @@ COPY --from=builder --chown=www-data:www-data /app .
 # Set environment variables
 ENV APP_ENV=production
 ENV APP_DEBUG=false
+ENV PORT=8000
 
 # Create system user
-RUN addgroup --system --gid 1001 laravel && \
-    adduser --system --uid 1001 --ingroup laravel laravel
+RUN addgroup -g 1001 -S laravel && \
+    adduser -S laravel -u 1001 -G laravel
 
 # Set proper permissions
-RUN chown -R laravel:laravel /app \
-    && chmod -R 755 /app/storage
+RUN chown -R laravel:laravel /app && \
+    chmod -R 755 /app/storage
+
+# Create healthcheck script
+RUN echo '#!/bin/sh' > /app/healthcheck.sh && \
+    echo 'nc -z localhost ${PORT:-8000}' >> /app/healthcheck.sh && \
+    echo 'exit $?' >> /app/healthcheck.sh && \
+    chmod +x /app/healthcheck.sh && \
+    chown laravel:laravel /app/healthcheck.sh
 
 # Switch to non-root user
 USER laravel
 
 # Expose port
 EXPOSE 8000
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+    CMD /app/healthcheck.sh || exit 1
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="Laravel application" \
+      version="1.0"
 
 # Start application
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]

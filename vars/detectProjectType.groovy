@@ -16,6 +16,7 @@ def call(String projectPath = '.') {
             def packageManager = detectPackageManager(projectPath)
             echo "Detected package manager: ${packageManager}"
             writeDockerfile(projectInfo.type, projectPath, packageManager)
+            writeDockerignore(projectInfo.type, projectPath)
         } else {
             echo "Dockerfile already exists at ${projectPath}/Dockerfile, skipping generation."
         }
@@ -80,7 +81,7 @@ def detectProjectType(String projectPath) {
         } else if (packageJson.dependencies?.express || packageJson.devDependencies?.express) {
             echo "Express project detected, setting port to 3000"
             return [type: 'express', port: 3000]
-        } else if (packageJson.dependencies?.nestjs || packageJson.devDependencies?.nestjs) {
+        } else if (packageJson.dependencies?.['@nestjs/core'] || packageJson.devDependencies?.['@nestjs/core'] || packageJson.dependencies?.['@nestjs/common'] || packageJson.devDependencies?.['@nestjs/common']) {
             echo "NestJS project detected, setting port to 3000"
             return [type: 'nestjs', port: 3000]
         }
@@ -102,6 +103,21 @@ def detectProjectType(String projectPath) {
     } else if (fileExists("${projectPath}/pubspec.yaml")) {
         echo "Flutter project detected, setting port to 8080"
         return [type: 'flutter', port: 8080]
+    }
+    
+    // Detecting Python Projects
+    else if (fileExists("${projectPath}/manage.py") || fileExists("${projectPath}/settings.py")) {
+        echo "Django project detected, setting port to 8000"
+        return [type: 'django', port: 8000]
+    } else if (fileExists("${projectPath}/requirements.txt") || fileExists("${projectPath}/pyproject.toml")) {
+        def requirementsContent = fileExists("${projectPath}/requirements.txt") ? readFile("${projectPath}/requirements.txt") : ""
+        if (requirementsContent.contains('fastapi') || requirementsContent.contains('uvicorn')) {
+            echo "FastAPI project detected, setting port to 8000"
+            return [type: 'fastapi', port: 8000]
+        } else if (requirementsContent.contains('django') || requirementsContent.contains('Django')) {
+            echo "Django project detected, setting port to 8000"
+            return [type: 'django', port: 8000]
+        }
     }
 
     echo "No recognized project type detected in ${projectPath}"
@@ -150,5 +166,35 @@ def writeNextEnsureStandaloneMode(String projectPath) {
         echo "Next.js standalone mode configured successfully"
     } catch (Exception e) {
         error "Failed to write Next.js ensure standalone mode script: ${e.message}"
+    }
+}
+
+def writeDockerignore(String projectType, String projectPath) {
+    try {
+        def dockerignoreTemplate = getDockerignoreTemplate(projectType)
+        def dockerignoreContent = libraryResource "dockerignoreTemplates/${dockerignoreTemplate}"
+        writeFile file: "${projectPath}/.dockerignore", text: dockerignoreContent
+        echo "Written .dockerignore for ${projectType} project at ${projectPath}/.dockerignore"
+    } catch (Exception e) {
+        echo "Warning: Failed to write .dockerignore for ${projectType} project: ${e.message}"
+    }
+}
+
+def getDockerignoreTemplate(String projectType) {
+    switch(projectType) {
+        case ['angular', 'react', 'vite-react', 'vuejs', 'nextjs', 'nuxt', 'express', 'nestjs']:
+            return 'dockerignore-node'
+        case ['springboot-maven', 'springboot-gradle']:
+            return 'dockerignore-java'
+        case ['laravel']:
+            return 'dockerignore-php'
+        case ['django', 'fastapi']:
+            return 'dockerignore-python'
+        case ['flutter']:
+            return 'dockerignore-flutter'
+        case ['html']:
+            return 'dockerignore-html'
+        default:
+            return 'dockerignore-node' // Default to node
     }
 }

@@ -1,0 +1,73 @@
+# ============================
+# Builder stage
+# ============================
+FROM python:3.11.7-alpine3.19 AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    libffi-dev
+
+# Copy requirements
+COPY requirements.txt ./
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# ============================
+# Production stage
+# ============================
+FROM python:3.11.7-alpine3.19
+
+# Set working directory
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache wget
+
+# Create non-root user
+RUN addgroup -g 1001 -S fastapi && \
+    adduser -S fastapi -u 1001 -G fastapi
+
+# Copy Python dependencies from builder
+COPY --from=builder --chown=fastapi:fastapi /root/.local /home/fastapi/.local
+
+# Copy application code
+COPY --chown=fastapi:fastapi . .
+
+# Update PATH to use user's local packages
+ENV PATH=/home/fastapi/.local/bin:$PATH
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PORT=8000
+
+# Create healthcheck script
+RUN echo '#!/bin/sh' > /app/healthcheck.sh && \
+    echo 'wget --no-verbose --tries=1 --spider --timeout=2 "http://localhost:${PORT:-8000}${HEALTH_ENDPOINT:-/health}" 2>&1' >> /app/healthcheck.sh && \
+    echo 'exit $?' >> /app/healthcheck.sh && \
+    chmod +x /app/healthcheck.sh && \
+    chown fastapi:fastapi /app/healthcheck.sh
+
+# Switch to non-root user
+USER fastapi
+
+# Expose port
+EXPOSE 8000
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+    CMD /app/healthcheck.sh || exit 1
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="FastAPI application" \
+      version="1.0"
+
+# Run with Uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "3"]

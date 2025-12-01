@@ -1,9 +1,33 @@
-FROM cirrusci/flutter:latest
+# Use pinned Flutter image
+FROM cirrusci/flutter:3.16.5
 
 WORKDIR /app
+
+# Copy all files
 COPY . .
 
+# Get dependencies
 RUN flutter pub get
+
+# Build APK for release
 RUN flutter build apk --release
 
-CMD ["flutter", "run", "--release"]
+# The APK will be available at build/app/outputs/flutter-apk/app-release.apk
+# This container is meant to be used as a build step
+# To extract the APK, use: docker cp <container>:/app/build/app/outputs/flutter-apk/app-release.apk ./
+
+# Display build output location
+RUN echo "===================================" && \
+    echo "APK built successfully!" && \
+    echo "Location: /app/build/app/outputs/flutter-apk/app-release.apk" && \
+    echo "===================================" && \
+    ls -lh /app/build/app/outputs/flutter-apk/
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="Flutter APK builder" \
+      version="1.0"
+
+# This container exits after build
+# Use docker cp to extract the APK or mount a volume
+CMD ["echo", "Build complete. Extract APK using: docker cp <container>:/app/build/app/outputs/flutter-apk/app-release.apk ./"]

@@ -1,0 +1,75 @@
+# Build outputs
+target/
+build/
+out/
+bin/
+.gradle/
+.mvn/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+azure-pipelines.yml
+
+# Documentation
+*.md
+docs/
+README*
+LICENSE
+CHANGELOG*
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+*.properties.local
+
+# Test
+test-results/
+coverage/
+
+# Temporary
+*.tmp
+tmp/
+temp/
+
+# Docker
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Gradle wrapper (optional - include if you want to use wrapper in container)
+# gradle/
+# gradlew
+# gradlew.bat
+
+# Maven wrapper (optional - include if you want to use wrapper in container)
+# .mvn/
+# mvnw
+# mvnw.cmd

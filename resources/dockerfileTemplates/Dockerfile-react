@@ -1,29 +1,43 @@
 # Use an official Node.js runtime as a parent image
-FROM node:18 AS builder
+FROM node:18.19.0-alpine3.19 AS builder
 
 # Set the working directory to /app
 WORKDIR /app
 
 # Copy the package.json and package-lock.json files to the container
-COPY package.json package-lock.json ./
+COPY package*.json ./
 
-# Install dependencies, including web-vitals
-RUN npm install && npm install web-vitals
+# Install dependencies
+RUN {{packageManager}} install
 
 # Copy all other project files to working directory
 COPY . .
 
 # Run the React build process and generate the artifacts
-RUN npm run build
+RUN {{packageManager}} run build
 
 # Multi-stage build process
-FROM nginx:alpine
+FROM nginx:1.25.3-alpine3.18
 
 # Copy the build artifacts from the builder stage
 COPY --from=builder /app/build /usr/share/nginx/html
 
+# Add security headers
+RUN echo 'add_header X-Frame-Options "SAMEORIGIN" always;' > /etc/nginx/conf.d/security-headers.conf && \
+    echo 'add_header X-Content-Type-Options "nosniff" always;' >> /etc/nginx/conf.d/security-headers.conf && \
+    echo 'add_header X-XSS-Protection "1; mode=block" always;' >> /etc/nginx/conf.d/security-headers.conf
+
 # Expose port 80
 EXPOSE 80
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="React application" \
+      version="1.0"
 
 # Start Nginx server
 CMD ["nginx", "-g", "daemon off;"]

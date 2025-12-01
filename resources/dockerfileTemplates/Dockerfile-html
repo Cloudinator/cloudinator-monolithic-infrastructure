@@ -1,5 +1,5 @@
-# Use the official Nginx image as the base image
-FROM nginx:alpine
+# Use the official Nginx image with pinned version
+FROM nginx:1.25.3-alpine3.18
 
 # Set the working directory inside the container
 WORKDIR /usr/share/nginx/html
@@ -7,8 +7,22 @@ WORKDIR /usr/share/nginx/html
 # Copy your HTML files and other assets into the Nginx HTML folder
 COPY . .
 
+# Add security headers
+RUN echo 'add_header X-Frame-Options "SAMEORIGIN" always;' > /etc/nginx/conf.d/security-headers.conf && \
+    echo 'add_header X-Content-Type-Options "nosniff" always;' >> /etc/nginx/conf.d/security-headers.conf && \
+    echo 'add_header X-XSS-Protection "1; mode=block" always;' >> /etc/nginx/conf.d/security-headers.conf
+
 # Expose port 80 to the host
 EXPOSE 80
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="Static HTML website" \
+      version="1.0"
 
 # Command to start Nginx
 CMD ["nginx", "-g", "daemon off;"]

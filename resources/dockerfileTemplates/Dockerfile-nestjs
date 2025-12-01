@@ -1,0 +1,69 @@
+# ============================
+# Builder stage
+# ============================
+FROM node:18.19.0-alpine3.19 AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN {{packageManager}} install
+
+# Copy application code
+COPY . .
+
+# Build the NestJS application
+RUN {{packageManager}} run build
+
+# ============================
+# Production stage
+# ============================
+FROM node:18.19.0-alpine3.19
+
+# Set working directory
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 1001 -S nestjs && \
+    adduser -S nestjs -u 1001 -G nestjs
+
+# Copy package files
+COPY --chown=nestjs:nestjs package*.json ./
+
+# Install production dependencies only
+RUN npm install --production
+
+# Copy built application from builder
+COPY --from=builder --chown=nestjs:nestjs /app/dist ./dist
+
+# Create inline healthcheck script
+RUN echo 'const http = require("http"); \
+const options = { host: "localhost", port: process.env.PORT || 3000, path: "/health", timeout: 2000 }; \
+http.request(options, (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }) \
+.on("error", () => { process.exit(1); }).end();' > /app/healthcheck.js && \
+    chown nestjs:nestjs /app/healthcheck.js
+
+# Switch to non-root user
+USER nestjs
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Expose port
+EXPOSE 3000
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+    CMD node /app/healthcheck.js || exit 1
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="NestJS application" \
+      version="1.0"
+
+# Start the application
+CMD ["node", "dist/main"]

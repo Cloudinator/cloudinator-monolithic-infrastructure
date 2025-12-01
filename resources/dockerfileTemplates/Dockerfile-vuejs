@@ -1,20 +1,36 @@
-# Use a Node.js image with a version 17 or later
-FROM node:18 as build-stage
+# Use a Node.js image with pinned version
+FROM node:18.19.0-alpine3.19 AS build-stage
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install
+RUN {{packageManager}} install
 
 COPY . .
 
-RUN npm run build
+RUN {{packageManager}} run build
 
-FROM nginx:stable-alpine as production-stage
+# Production stage
+FROM nginx:1.25.3-alpine3.18
 
 COPY --from=build-stage /app/dist /usr/share/nginx/html
 
+# Add security headers
+RUN echo 'add_header X-Frame-Options "SAMEORIGIN" always;' > /etc/nginx/conf.d/security-headers.conf && \
+    echo 'add_header X-Content-Type-Options "nosniff" always;' >> /etc/nginx/conf.d/security-headers.conf && \
+    echo 'add_header X-XSS-Protection "1; mode=block" always;' >> /etc/nginx/conf.d/security-headers.conf
+
+# Expose port 80
 EXPOSE 80
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="Vue.js application" \
+      version="1.0"
 
 CMD ["nginx", "-g", "daemon off;"]

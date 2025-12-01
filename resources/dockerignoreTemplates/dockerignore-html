@@ -1,0 +1,55 @@
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+azure-pipelines.yml
+
+# Documentation (keep if needed in production)
+# *.md
+# docs/
+# README*
+# LICENSE
+
+# Logs
+*.log
+logs/
+
+# Temporary
+*.tmp
+tmp/
+temp/
+
+# Docker
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Development
+src/
+node_modules/
+package*.json
+gulpfile.js
+webpack.config.js
+.babelrc
+.eslintrc*
+.prettierrc*
+
+# Source maps (exclude in production)
+*.map

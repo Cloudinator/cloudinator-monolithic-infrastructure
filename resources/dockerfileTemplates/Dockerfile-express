@@ -1,10 +1,10 @@
-# Use the official Node.js image
-FROM node:18-alpine
+# Build stage
+FROM node:18.19.0-alpine3.19 AS builder
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json
+# Copy package files
 COPY package*.json ./
 
 # Install dependencies
@@ -13,8 +13,43 @@ RUN npm install
 # Copy the rest of the application code
 COPY . .
 
+# Production stage
+FROM node:18.19.0-alpine3.19
+
+# Set the working directory
+WORKDIR /usr/src/app
+
+# Copy package files
+COPY --from=builder /usr/src/app/package*.json ./
+
+# Install production dependencies only
+RUN npm install --production
+
+# Copy application code
+COPY --from=builder /usr/src/app .
+
+# Create a non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 && \
+    chown -R nodejs:nodejs /usr/src/app
+
+# Copy healthcheck script
+COPY --chown=nodejs:nodejs resources/scripts/healthcheck-node.js /usr/src/app/healthcheck.js 2>/dev/null || echo "console.log('No healthcheck');" > /usr/src/app/healthcheck.js
+
+# Switch to non-root user
+USER nodejs
+
 # Expose the port your app runs on
 EXPOSE 3000
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD node /usr/src/app/healthcheck.js || exit 1
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="Express.js application" \
+      version="1.0"
 
 # Define the command to run the application
 CMD ["node", "server.js"]

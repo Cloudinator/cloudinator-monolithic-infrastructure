@@ -1,7 +1,7 @@
 # ============================
 # 1) Builder stage
 # ============================
-FROM gradle:8.4-jdk17 AS builder
+FROM gradle:8.5-jdk17-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN gradle build --no-daemon -x test
@@ -10,13 +10,50 @@ RUN gradle build --no-daemon -x test
 # ============================
 # 2) Runtime stage
 # ============================
-FROM eclipse-temurin:17-jdk-alpine
+FROM eclipse-temurin:17.0.9_9-jre-alpine
 WORKDIR /app
 
-# Copy the compiled JAR from the builder
-COPY --from=builder /app/build/libs/*0.0.1-SNAPSHOT.jar app.jar
+# Install wget for healthcheck
+RUN apk add --no-cache wget
 
+# Create non-root user
+RUN addgroup -g 1001 -S spring && \
+    adduser -S spring -u 1001 -G spring
+
+# Create volume directory and set permissions
+RUN mkdir -p /filestorage/images && \
+    chown -R spring:spring /filestorage
+
+# Copy the compiled JAR from the builder
+COPY --from=builder --chown=spring:spring /app/build/libs/*0.0.1-SNAPSHOT.jar app.jar
+
+# Create healthcheck script
+RUN echo '#!/bin/sh' > /app/healthcheck.sh && \
+    echo 'wget --no-verbose --tries=1 --spider --timeout=2 "http://localhost:${PORT:-8080}${HEALTH_ENDPOINT:-/actuator/health}" 2>&1' >> /app/healthcheck.sh && \
+    echo 'exit $?' >> /app/healthcheck.sh && \
+    chmod +x /app/healthcheck.sh && \
+    chown spring:spring /app/healthcheck.sh
+
+# Switch to non-root user
+USER spring
+
+# Environment variables
+ENV PORT=8080
+ENV FILE_STORAGE_PATH=/filestorage/images/
+
+# Expose port
 EXPOSE 8080
-VOLUME /filestorage/images/
+
+# Volume for file storage (configurable via ENV)
+VOLUME ${FILE_STORAGE_PATH}
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+    CMD /app/healthcheck.sh || exit 1
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="Spring Boot application (Gradle)" \
+      version="1.0"
 
 ENTRYPOINT ["java", "-Dspring.profiles.active=prod", "-jar", "app.jar"]

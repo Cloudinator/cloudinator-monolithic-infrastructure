@@ -1,5 +1,5 @@
 # Use the official Node.js image as the base image
-FROM node:18
+FROM node:18.19.0-alpine3.19 AS builder
 
 # Set the working directory in the container
 WORKDIR /app
@@ -8,23 +8,37 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN {{packageManager}} install
 
 # Copy the rest of the application code
 COPY . .
 
 # Build the Vite project
-RUN npm run build
+RUN {{packageManager}} run build
 
 # Use a lightweight web server to serve the static files
 # Use the official NGINX image
-FROM nginx:alpine
+FROM nginx:1.25.3-alpine3.18
 
 # Copy the build output from the previous stage to the NGINX html directory
-COPY --from=0 /app/dist /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Add security headers
+RUN echo 'add_header X-Frame-Options "SAMEORIGIN" always;' > /etc/nginx/conf.d/security-headers.conf && \
+    echo 'add_header X-Content-Type-Options "nosniff" always;' >> /etc/nginx/conf.d/security-headers.conf && \
+    echo 'add_header X-XSS-Protection "1; mode=block" always;' >> /etc/nginx/conf.d/security-headers.conf
 
 # Expose port 80
 EXPOSE 80
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+
+# Add labels for metadata
+LABEL maintainer="cloudinator" \
+      description="Vite React application" \
+      version="1.0"
 
 # Start NGINX server
 CMD ["nginx", "-g", "daemon off;"]
